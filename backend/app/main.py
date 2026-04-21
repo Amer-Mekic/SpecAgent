@@ -19,7 +19,7 @@ app.add_middleware(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    enable_pgvector()
+    await enable_pgvector()
     yield
 
 @app.get("/health")
