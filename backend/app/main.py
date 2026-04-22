@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.routes import auth
 from app.core.database import enable_pgvector
 
 app = FastAPI(
@@ -29,3 +30,6 @@ def health():
 @app.get("/")
 def root():
     return {"message": "NIJE NADZENOU NE POSTOJI"}
+
+
+app.include_router(auth.router, prefix="/api")

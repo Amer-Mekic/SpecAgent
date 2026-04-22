@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     POSTGRES_USER: Optional[str] = None
     POSTGRES_PASSWORD: Optional[str] = None
     POSTGRES_DB: str = "postgres"
+    SECRET_KEY: str = "dev-secret-key-change-me"
 
     class Config:
         env_file = ".env"
