@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import auth
+from app.api.routes import auth, upload
 from app.core.database import enable_pgvector
 
 app = FastAPI(
@@ -33,3 +33,4 @@ def root():
 
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(upload.router, prefix="/api")
