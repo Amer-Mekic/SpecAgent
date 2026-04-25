@@ -53,7 +53,7 @@ async def _clone_session_data(source: Session, target: Session, db: AsyncSession
         await db.flush()
         section_id_map[src_sec.id] = new_sec.id
 
-    # 2) Clone requirements (+ 1:1 children)
+    # 2) Clone requirements
     for src_req in source.requirements:
         new_req = Requirement(
             session_id=target.id,
@@ -87,7 +87,7 @@ async def _clone_session_data(source: Session, target: Session, db: AsyncSession
                 )
             )
 
-    # 3) Clone traceability links (many-to-many bridge)
+    # 3) Clone traceability links
     for src_req in source.requirements:
         for src_link in src_req.traceability_links:
             db.add(
@@ -98,7 +98,7 @@ async def _clone_session_data(source: Session, target: Session, db: AsyncSession
                 )
             )
 
-    # 4) Clone chat messages (remap optional requirement_id)
+    # 4) Clone chat messages
     for src_msg in source.chat_messages:
         db.add(
             ChatMessage(
@@ -142,28 +142,29 @@ async def upload_document(
     .where(
         Session.document_hash == doc_hash,
         Session.status == "complete",
+        Session.user_id == current_user.id
     )
     .order_by(Session.created_at.desc())
     )
     existing_session = existing_result.scalars().first()
-    if existing_session is not None:
-        new_session = Session(
-            user_id=current_user.id,
-            document_name=file.filename or "uploaded-document",
-            document_hash=doc_hash,
-            status="complete",
-        )
-        db.add(new_session)
-        await db.commit()
-        await db.refresh(new_session)
+    # if existing_session is not None:
+    #     new_session = Session(
+    #         user_id=current_user.id,
+    #         document_name=file.filename or "uploaded-document",
+    #         document_hash=doc_hash,
+    #         status="complete",
+    #     )
+    #     db.add(new_session)
+    #     await db.commit()
+    #     await db.refresh(new_session)
 
-        await _clone_session_data(existing_session, new_session, db)
+    #     await _clone_session_data(existing_session, new_session, db)
 
-        return {
-            "session_id": str(new_session.id),
-            "cached": True,
-            "message": "Document previously processed. Results restored from cache.",
-        }
+    #     return {
+    #         "session_id": str(new_session.id),
+    #         "cached": True,
+    #         "message": "Document previously processed. Results restored from cache.",
+    #     }
 
     session = Session(
         user_id=current_user.id,

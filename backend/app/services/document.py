@@ -3,17 +3,23 @@ from __future__ import annotations
 import hashlib
 import io
 from pathlib import Path
+import re
 from uuid import UUID
 
 import magic
 from docx import Document
 from fastapi import HTTPException, status
+import nltk
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+from nltk.tokenize import sent_tokenize
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document_section import DocumentSection
 
+nltk.download('punkt_tab')
 
 _model = SentenceTransformer("all-MiniLM-L6-v2")
 _ALLOWED_MIME_TYPES = {
@@ -116,32 +122,174 @@ def extract_from_txt(file_bytes: bytes) -> list[dict]:
 
     return sections
 
+def join_broken_sentences(text: str) -> str:
+    # Replace newline followed by lowercase letter (continuation) with space
+    text = re.sub(r'\n(?=[a-z])', ' ', text)
+    # Also handle cases where line ends with a hyphenated word
+    text = re.sub(r'-\n', '', text)
+    return text
 
-def chunk_and_embed(sections: list[dict]) -> list[dict]:
+def chunk_and_embed(sections: list[dict], threshold: float = 0.35) -> list[dict]:
     chunks: list[dict] = []
 
+    min_sentences = 2
+    max_sentences = 7
+    min_chars = 220
+    max_chars = 1200
+
+    def _is_list_item(line: str) -> bool:
+        stripped = line.strip()
+        if not stripped:
+            return False
+
+        bullet_prefixes = ("-", "*", "•", "‣", "◦", "▪")
+        if stripped.startswith(bullet_prefixes):
+            return True
+
+        if len(stripped) >= 3 and stripped[0].isdigit():
+            sep_idx = 1
+            while sep_idx < len(stripped) and stripped[sep_idx].isdigit():
+                sep_idx += 1
+            if sep_idx < len(stripped) and stripped[sep_idx] in (".", ")", "]"):
+                return True
+
+        return False
+
+    def _split_structural_blocks(text: str) -> list[tuple[str, str]]:
+        lines = text.splitlines()
+        blocks: list[tuple[str, str]] = []
+
+        current_lines: list[str] = []
+        current_kind: str | None = None
+
+        def _flush() -> None:
+            nonlocal current_lines, current_kind
+            if not current_lines:
+                return
+            block_text = "\n".join(current_lines).strip()
+            if block_text:
+                blocks.append((current_kind or "text", block_text))
+            current_lines = []
+            current_kind = None
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                _flush()
+                continue
+
+            kind = "list" if _is_list_item(stripped) else "text"
+            if current_kind is None:
+                current_kind = kind
+            elif current_kind != kind:
+                _flush()
+                current_kind = kind
+
+            current_lines.append(line)
+
+        _flush()
+
+        if not blocks:
+            single = text.strip()
+            return [("text", single)] if single else []
+
+        return blocks
+
+    def _append_chunk(section: dict, content: str) -> None:
+        cleaned = content.strip()
+        if not cleaned:
+            return
+        chunks.append(
+            {
+                "content": cleaned,
+                "source_page": section.get("source_page"),
+                "source_page_end": section.get("source_page_end"),
+                "source_identifier": section.get("source_identifier"),
+                "document_type": section.get("document_type"),
+                "embedding": None,
+            }
+        )
+
+    def _semantic_split(text: str, similarity_cutoff: float) -> list[str]:
+        sentences: list[str] = sent_tokenize(text, language="english")
+        if len(sentences) <= 1:
+            return [text]
+
+        embeddings = _model.encode(sentences)
+        similarities = [
+            cosine_similarity([embeddings[i]], [embeddings[i + 1]])[0][0]
+            for i in range(len(embeddings) - 1)
+        ]
+
+        if similarities:
+            adaptive_cutoff = min(similarity_cutoff, float(np.percentile(similarities, 20)))
+        else:
+            adaptive_cutoff = similarity_cutoff
+
+        sentence_groups: list[list[str]] = []
+        current_group: list[str] = [sentences[0]]
+
+        for i, sim in enumerate(similarities):
+            current_len = len(" ".join(current_group))
+            should_split_semantic = (
+                sim < adaptive_cutoff
+                and len(current_group) >= min_sentences
+                and current_len >= min_chars
+            )
+            should_split_size = (
+                len(current_group) >= max_sentences
+                or current_len >= max_chars
+            )
+
+            if should_split_semantic or should_split_size:
+                sentence_groups.append(current_group)
+                current_group = [sentences[i + 1]]
+            else:
+                current_group.append(sentences[i + 1])
+
+        if current_group:
+            sentence_groups.append(current_group)
+
+        merged_groups: list[list[str]] = []
+        for group in sentence_groups:
+            group_text = " ".join(group)
+            if merged_groups and (
+                len(group_text) < (min_chars // 2) or len(group) < min_sentences
+            ):
+                merged_groups[-1].extend(group)
+            else:
+                merged_groups.append(group)
+
+        return [" ".join(group).strip() for group in merged_groups if " ".join(group).strip()]
+
     for section in sections:
-        content = section["content"]
-        if len(content) <= 500:
-            chunks.append(section.copy())
+        text = (section.get("content") or "").strip()
+        text = join_broken_sentences(text)
+        if not text:
             continue
 
-        start = 0
-        while start < len(content):
-            end = min(start + 400, len(content))
-            chunk = section.copy()
-            chunk["content"] = content[start:end]
-            chunks.append(chunk)
-            if end >= len(content):
-                break
-            start = end - 50
+        blocks = _split_structural_blocks(text)
 
-    if not chunks:
-        return []
+        for block_kind, block_text in blocks:
+            block_sentences = sent_tokenize(block_text, language="english")
+            block_is_short = len(block_text) < max_chars and len(block_sentences) <= 3
 
-    embeddings = _model.encode([chunk["content"] for chunk in chunks])
-    for chunk, embedding in zip(chunks, embeddings):
-        chunk["embedding"] = [float(value) for value in embedding]
+            if block_kind == "list" and len(block_text) <= int(max_chars * 1.25):
+                _append_chunk(section, block_text)
+                continue
+
+            if block_is_short:
+                _append_chunk(section, block_text)
+                continue
+
+            for split_text in _semantic_split(block_text, threshold):
+                _append_chunk(section, split_text)
+
+    if chunks:
+        texts = [c["content"] for c in chunks]
+        embeddings_batch = _model.encode(texts)
+        for chunk, embedding in zip(chunks, embeddings_batch):
+            chunk["embedding"] = embedding.tolist()
 
     return chunks
 

@@ -1,4 +1,4 @@
-# SpecAgent — CLAUDE.md
+# SpecAgent
 
 ## What This Project Is
 SpecAgent is a web application that automates software requirements 
@@ -13,7 +13,7 @@ search.
   pgvector, sentence-transformers, python-jose, passlib
 - Frontend: React (Vite), axios, react-router-dom
 - Database: PostgreSQL 18 + pgvector extension via Docker
-- LLM: Anthropic Claude API (or OpenAI — configured via .env)
+- LLM: API key configured via .env
 
 ## Project Structure
 backend/
@@ -66,16 +66,16 @@ result_type schemas.
 
 ## Key Design Decisions
 - Traceability is a plain Python function using pgvector cosine 
-  similarity — NOT an LLM agent
-- Validation result does NOT block the pipeline — flagged 
+  similarity, NOT an LLM agent
+- Validation result does NOT block the pipeline, flagged 
   requirements still proceed to classification and traceability
-- pipeline_status and finalization_status are separate fields — 
+- pipeline_status and finalization_status are separate fields,
   pipeline_status is set by the system, finalization_status by 
   the user
 - JWT auth: every endpoint except /auth/register and /auth/login 
   requires a valid JWT. Session ownership is verified on every 
   data query.
-- Cache: document hash stored in SESSION.document_hash — if same 
+- Cache: document hash stored in SESSION.document_hash, if same 
   hash exists, copy results without re-running agents
 
 ## API Endpoints
@@ -93,7 +93,7 @@ POST   /api/export/{session_id}
 DATABASE_URL, ANTHROPIC_API_KEY, SECRET_KEY, DEBUG
 
 ## What NOT to Do
-- Do not use merge when updating feature branches — use rebase
+- Do not use merge when updating feature branches, use rebase
 - Do not hardcode API keys anywhere
 - Do not add LLM calls to the traceability service
 - Do not make agents call each other directly

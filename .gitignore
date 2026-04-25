@@ -46,3 +46,6 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Exports:
+exports/
