@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Annotated
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
@@ -14,11 +15,12 @@ from app.models.validation_report import ValidationReport
 from app.models.classification import Classification
 from app.models.traceability_link import TraceabilityLink
 from app.models.chat_message import ChatMessage
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.core.security import get_current_user
 from app.models.requirement import Requirement
 from app.models.session import Session
 from app.models.user import User
+from app.services.pipeline import run_pipeline
 from app.services.document import (
     chunk_and_embed,
     compute_document_hash,
@@ -31,6 +33,11 @@ router = APIRouter(prefix="/upload", tags=["upload"])
 
 MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
 UPLOAD_ROOT = Path(__file__).resolve().parents[3] / "exports"
+
+
+async def _run_pipeline_background(session_id: UUID) -> None:
+    async with SessionLocal() as pipeline_db:
+        await run_pipeline(session_id, pipeline_db)
 
 
 async def _clone_session_data(source: Session, target: Session, db: AsyncSession) -> None:
@@ -194,6 +201,12 @@ async def upload_document(
         await save_sections_to_db(chunks, session.id, db)
 
         session.status = "complete"
+        await db.commit()
+
+        # Start the LLM pipeline without blocking the upload response.
+        asyncio.create_task(_run_pipeline_background(session.id))
+
+        session.status = "processing"
         await db.commit()
     except HTTPException:
         await db.rollback()
