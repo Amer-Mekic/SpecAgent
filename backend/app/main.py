@@ -1,13 +1,13 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import auth, upload
+from app.api.routes import auth, chat, export, requirements, rtm, upload
 from app.core.database import enable_pgvector
 
 app = FastAPI(
     title="SpecAgent API",
     description="AI Agent-Based SRS Generation",
-    version="0.1.0"
+    version="1.0.0"
 )
 
 app.add_middleware(
@@ -34,3 +34,7 @@ def root():
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(upload.router, prefix="/api")
+app.include_router(requirements.router, prefix="/api")
+app.include_router(chat.router, prefix="/api")
+app.include_router(rtm.router, prefix="/api")
+app.include_router(export.router, prefix="/api")
