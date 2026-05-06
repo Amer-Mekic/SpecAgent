@@ -7,11 +7,12 @@ ROOT_DIR = Path(__file__).resolve().parents[3]
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(ROOT_DIR / ".env"),
-        extra="ignore"
-    )
+    env_file=str(ROOT_DIR / ".env"),
+    env_file_encoding="utf-8",
+    extra="ignore"
+)
     DATABASE_URL: Optional[str] = None
-    POSTGRES_URL: Optional[str] = None
+    POSTGRES_URL: str
     POSTGRES_USER: Optional[str] = None
     POSTGRES_PASSWORD: Optional[str] = None
     POSTGRES_DB: str = "postgres"
