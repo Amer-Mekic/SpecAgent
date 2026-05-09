@@ -30,8 +30,8 @@ export function useSession(guestMode = false) {
       setLoading(true);
       try {
         const data = await reqApi.list(sid);
-        setRequirements(data);
-        setPipelineStatus('complete');
+setRequirements(data.requirements ?? []);
+setPipelineStatus(data.session_status === 'complete' ? 'complete' : 'processing');
       } catch (e) {
         console.error(e);
       } finally {

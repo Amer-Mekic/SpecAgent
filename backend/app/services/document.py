@@ -30,7 +30,7 @@ _ALLOWED_MIME_TYPES = {
 
 
 def validate_file_type(file_bytes: bytes, filename: str) -> str:
-    mime_type = magic.from_buffer(file_bytes[:8], mime=True)
+    mime_type = magic.from_buffer(file_bytes[:2048], mime=True)
     doc_type = _ALLOWED_MIME_TYPES.get(mime_type)
     if doc_type is None:
         raise HTTPException(

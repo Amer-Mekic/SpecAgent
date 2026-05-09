@@ -86,3 +86,4 @@ class ClassificationResult(BaseModel):
     reasoning: str = Field(
         description="One sentence explaining why this classification was chosen."
     )
+

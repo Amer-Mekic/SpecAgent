@@ -38,7 +38,7 @@ export default function ReviewPage({
     if (sessionId) loadRequirements(sessionId);
   }, [loadRequirements, sessionId]);
 
-  const filtered = requirements.filter(r => {
+ const filtered = (requirements ?? []).filter(r => {
     if (filter === 'all') return true;
     if (filter === 'functional') return r.classification?.type === 'functional';
     if (filter === 'non-functional') return r.classification?.type === 'non-functional';
@@ -59,7 +59,7 @@ export default function ReviewPage({
   }, [editRequirement]);
 
   
-  const approvedCount = requirements.filter(r => r.finalization_status === 'final').length;
+  const approvedCount = (requirements ?? []).filter(r => r.finalization_status === 'final').length;
 
   return (
     <div className="review-page">
