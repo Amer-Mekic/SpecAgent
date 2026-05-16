@@ -19,6 +19,9 @@ from app.models.traceability_link import TraceabilityLink
 from app.models.user import User
 from app.models.validation_report import ValidationReport
 
+from app.agents.classification import run_classification
+from app.models.classification import Classification
+
 router = APIRouter(tags=["requirements"])
 
 ALLOWED_FINALIZATION = {"draft", "reviewed", "final", "rejected"}
@@ -294,7 +297,6 @@ async def create_requirement(
 ) -> dict[str, object]:
     await _get_owned_session(payload.session_id, db, current_user)
 
-    # Get the next req_id (REQ-001, REQ-002, etc.)
     result = await db.execute(
         select(Requirement)
         .where(Requirement.session_id == payload.session_id)
@@ -316,4 +318,35 @@ async def create_requirement(
     await db.commit()
     await db.refresh(new_req)
 
-    return _serialize_requirement(new_req)
+    # Classify the new requirement
+    try:
+        classification_results = await run_classification([
+            {"req_id": new_req.req_id, "statement": new_req.statement}
+        ])
+        if classification_results:
+            c = classification_results[0]
+            new_classification = Classification(
+                requirement_id=new_req.id,
+                type=c.type,
+                sub_category=c.sub_category,
+                confidence=c.confidence,
+            )
+            new_req.status = "classified"
+            db.add(new_classification)
+            await db.commit()
+    except Exception:
+        pass  # Don't fail the whole request if classification fails
+
+    # Reload with all relationships to avoid MissingGreenlet error
+    refreshed = await db.execute(
+        select(Requirement)
+        .options(
+            joinedload(Requirement.validation_report),
+            joinedload(Requirement.classification),
+            joinedload(Requirement.traceability_links).joinedload(TraceabilityLink.document_section),
+        )
+        .where(Requirement.id == new_req.id)
+    )
+    loaded_req = refreshed.unique().scalar_one()
+
+    return _serialize_requirement(loaded_req)

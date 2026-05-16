@@ -2,13 +2,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import auth, chat, export, requirements, rtm, upload
-from app.core.database import create_tables, enable_pgvector
+from app.core.database import enable_pgvector
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await enable_pgvector()
-    await create_tables()
     yield
 
 
