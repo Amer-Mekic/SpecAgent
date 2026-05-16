@@ -1,4 +1,8 @@
-from pydantic import BaseModel, Field
+from __future__ import annotations
+
+import json
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class RawRequirement(BaseModel):
@@ -46,9 +50,7 @@ class ValidationIssue(BaseModel):
 
 class ValidationResult(BaseModel):
     requirement_id: str = Field(
-        description=(
-            "The req_id of the requirement being validated, e.g. REQ-001"
-        )
+        description="The req_id of the requirement being validated, e.g. REQ-001"
     )
     result: str = Field(
         description="Overall validation outcome. One of: pass | flagged | rejected"
@@ -63,12 +65,28 @@ class ValidationResult(BaseModel):
         )
     )
 
+    @field_validator("issues", mode="before")
+    @classmethod
+    def coerce_issues(cls, v):
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                return parsed if isinstance(parsed, list) else []
+            except (json.JSONDecodeError, ValueError):
+                return []
+        return v
+
+    @field_validator("improved_statement", mode="before")
+    @classmethod
+    def coerce_improved_statement(cls, v):
+        if v == "None" or v == "null" or v == "":
+            return None
+        return v
+
 
 class ClassificationResult(BaseModel):
     requirement_id: str = Field(
-        description=(
-            "The req_id of the requirement being classified, e.g. REQ-001"
-        )
+        description="The req_id of the requirement being classified, e.g. REQ-001"
     )
     type: str = Field(
         description="Requirement category. One of: functional | non-functional"
@@ -86,4 +104,12 @@ class ClassificationResult(BaseModel):
     reasoning: str = Field(
         description="One sentence explaining why this classification was chosen."
     )
+class ValidationResultWrapper(BaseModel):
+    validations: list[ValidationResult] = Field(
+        description="List of validation results, one per requirement."
+    )
 
+class ClassificationResultWrapper(BaseModel):
+    classifications: list[ClassificationResult] = Field(
+        description="List of classification results, one per requirement."
+    )

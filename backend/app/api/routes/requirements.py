@@ -280,3 +280,40 @@ async def revalidate_requirement(
             "suggestions": suggestions,
         },
     }
+
+class RequirementCreateRequest(BaseModel):
+    session_id: UUID
+    statement: str
+
+
+@router.post("/requirements")
+async def create_requirement(
+    payload: RequirementCreateRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, object]:
+    await _get_owned_session(payload.session_id, db, current_user)
+
+    # Get the next req_id (REQ-001, REQ-002, etc.)
+    result = await db.execute(
+        select(Requirement)
+        .where(Requirement.session_id == payload.session_id)
+        .order_by(Requirement.req_id.desc())
+    )
+    existing = result.scalars().all()
+    next_num = len(existing) + 1
+    req_id = f"REQ-{next_num:03d}"
+
+    new_req = Requirement(
+        session_id=payload.session_id,
+        req_id=req_id,
+        statement=payload.statement,
+        status="raw",
+        finalization_status="draft",
+        edited_by="user",
+    )
+    db.add(new_req)
+    await db.commit()
+    await db.refresh(new_req)
+
+    return _serialize_requirement(new_req)

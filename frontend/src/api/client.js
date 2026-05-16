@@ -63,6 +63,11 @@ export const upload = {
 // Requirements
 export const requirements = {
   list: (sessionId) => request(`/api/requirements/${sessionId}`),
+  create: (sessionId, data) =>
+    request(`/api/requirements`, {
+      method: 'POST',
+      body: JSON.stringify({ session_id: sessionId, ...data }),
+    }),
   update: (reqId, data) =>
     request(`/api/requirements/${reqId}`, {
       method: 'PUT',
@@ -93,12 +98,34 @@ export const chat = {
 // RTM & Export
 export const exportApi = {
   rtm: (sessionId) => request(`/api/rtm/${sessionId}`),
+
   srs: async (sessionId, format = 'pdf') => {
     const token = getToken();
-    const res = await fetch(`${BASE_URL}/api/export/${sessionId}?format=${format}`, {
+    const res = await fetch(`${BASE_URL}/api/export/${sessionId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ format }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Export failed' }));
+      throw new Error(err.detail || 'Export failed');
+    }
+    return res.blob();
+  },
+
+  rtmPdf: async (sessionId) => {
+    const token = getToken();
+    const res = await fetch(`${BASE_URL}/api/rtm/${sessionId}/export`, {
+      method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    if (!res.ok) throw new Error('Export failed');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'RTM export failed' }));
+      throw new Error(err.detail || 'RTM export failed');
+    }
     return res.blob();
   },
 };

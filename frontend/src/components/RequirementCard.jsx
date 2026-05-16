@@ -69,11 +69,23 @@ export default function RequirementCard({ req, index, onApprove, onReject, onEdi
 
         {req.validation_report?.issues?.length > 0 && !isApproved && (
           <div className="validation-issues">
-            {req.validation_report.issues.slice(0, 2).map((issue, i) => (
-              <span key={i} className="issue-tag">⚠ {issue}</span>
+            {req.validation_report.issues.slice(0, 1).map((issue, i) => (
+               <span key={i} className="issue-tag" title={issue.suggestion}>
+                 ⚠ {issue.issue_type}: {issue.description}
+               </span>
             ))}
           </div>
         )}
+        {req.traceability_links?.length > 0 && (
+          <div className="traceability-links">
+            <span className="trace-label">📎 Traced to:</span>
+            {req.traceability_links.slice(0, 3).map((link, i) => (
+            <span key={i} className="trace-tag" title={`Similarity: ${(link.similarity_score * 100).toFixed(0)}%`}>
+              {link.source_identifier || `Section ${i + 1}`}
+            </span>
+          ))}
+          </div>
+  )}
       </div>
 
       <div className="card-actions">

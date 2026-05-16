@@ -18,21 +18,32 @@ export default function ReviewPage({
   const [chatOpen, setChatOpen] = useState(true);
   const [pinnedReq, setPinnedReq] = useState(null);
   const [polling, setPolling] = useState(() => !guestMode);
+  const [pipelineStage, setPipelineStage] = useState(() => guestMode ? null : 'extract');
 
   // Poll for requirements while pipeline is running
-  useEffect(() => {
-    if (guestMode || !sessionId || !polling) return;
-    const interval = setInterval(async () => {
-      try {
-        const data = await reqApi.list(sessionId);
-        loadRequirements(sessionId);
-        const allDone = data.every(r => r.pipeline_status === 'traced');
-        if (allDone && data.length > 0) setPolling(false);
-      // eslint-disable-next-line no-empty
-      } catch {}
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [guestMode, sessionId, polling, loadRequirements]);
+ useEffect(() => {
+  if (guestMode || !sessionId || !polling) return;
+  const interval = setInterval(async () => {
+    try {
+      const data = await reqApi.list(sessionId);
+      loadRequirements(sessionId);
+      const statusMap = {
+        extracting: 'extract',
+        validating: 'validate',
+        classifying: 'classify',
+        tracing: 'trace',
+        complete: null,
+        failed: null,
+      };
+      setPipelineStage(statusMap[data.session_status] ?? null);
+      if (data.session_status === 'complete' || data.session_status === 'failed') {
+        setPolling(false);
+      }
+    // eslint-disable-next-line no-empty
+    } catch {}
+  }, 4000);
+  return () => clearInterval(interval);
+}, [guestMode, sessionId, polling, loadRequirements]);
 
   useEffect(() => {
     if (sessionId) loadRequirements(sessionId);
@@ -55,15 +66,20 @@ export default function ReviewPage({
   }, [requirements]);
 
   const handleApplySuggestion = useCallback(async (reqId, statement) => {
-    if (reqId) await editRequirement(reqId, statement);
-  }, [editRequirement]);
+  if (reqId) {
+    await editRequirement(reqId, statement);
+  } else {
+    await reqApi.create(sessionId, { statement });
+    loadRequirements(sessionId);
+  }
+}, [editRequirement, sessionId, loadRequirements]);
 
   
   const approvedCount = (requirements ?? []).filter(r => r.finalization_status === 'final').length;
 
   return (
     <div className="review-page">
-      <PipelineBar currentStage={polling ? 'extract' : null} />
+      <PipelineBar currentStage={pipelineStage} />
 
       <div className="review-toolbar">
         <div className="review-title-row">

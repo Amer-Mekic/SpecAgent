@@ -455,15 +455,28 @@ async def generate_rtm_pdf(
         raise RuntimeError(f"RTM DOCX file was not created at {temp_docx_path}")
     
     try:
-        result = subprocess.run(
-            [
-                "/Applications/LibreOffice.app/Contents/MacOS/soffice",
-                "--headless",
-                "--convert-to",
-                "pdf",
-                "--outdir",
-                str(dir_path),
-                temp_docx_path,
+        # ADD this:
+       libreoffice_paths = [
+           r"C:\Program Files\LibreOffice\program\soffice.exe",
+           r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+       ]
+
+       soffice = next((p for p in libreoffice_paths if os.path.exists(p)), None)
+
+       if soffice is None:
+          raise RuntimeError(
+               "LibreOffice not found. Please install it from https://www.libreoffice.org/download/download/"
+          )
+
+       result = subprocess.run(
+           [
+               soffice,
+               "--headless",
+               "--convert-to",
+               "pdf",
+               "--outdir",
+               str(dir_path),
+               temp_docx_path,
             ],
             check=True,
             capture_output=True,

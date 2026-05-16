@@ -1,13 +1,13 @@
 from pydantic_ai import Agent
 
 from app.core.llm import get_nvidia_model
-from app.schemas.requirement import ClassificationResult
+from app.schemas.requirement import ClassificationResult, ClassificationResultWrapper
 
 _model = get_nvidia_model()
 
 classification_agent = Agent(
     model=_model,
-    output_type=ClassificationResult,
+    output_type=ClassificationResultWrapper,
     model_settings={"temperature": 0.1},
     system_prompt="""
 You are a software requirements classification specialist.
@@ -15,45 +15,37 @@ You are a software requirements classification specialist.
 Classify each requirement as exactly one of:
 
 FUNCTIONAL - describes what the system shall DO. Specifies
-a behavior, feature, or capability. Usually follows the
-pattern: The system shall [action] [object] [condition].
-Examples: user authentication, data export, search,
-file upload, notification sending.
+a behavior, feature, or capability.
 
 NON-FUNCTIONAL - describes a quality the system MUST HAVE.
-Does not describe behavior but constrains how the system
-performs.
 Sub-categories:
   performance   - speed, throughput, latency, capacity
-  security      - authentication, authorization, encryption,
-                  data protection
+  security      - authentication, authorization, encryption
   usability     - ease of use, accessibility, learnability
   reliability   - uptime, fault tolerance, error recovery
   maintainability - modularity, testability, code quality
-  portability   - browser support, OS compatibility,
-                  deployment environments
+  portability   - browser support, OS compatibility
 
-When in doubt between functional and non-functional,
-ask: does this describe a system action or a system
-quality? Actions are functional. Qualities are
-non-functional.
+When in doubt: actions are functional, qualities are non-functional.
 """,
 )
 
 
 async def run_classification(requirements: list[dict]) -> list[ClassificationResult]:
-    results: list[ClassificationResult] = []
+    statements_context = "\n".join(
+        f"- {req['req_id']}: {req['statement']}" for req in requirements
+    )
+    prompt = (
+        f"Classify each of the following requirements:\n\n"
+        f"{statements_context}\n\n"
+        f"Return a classification result for every requirement listed."
+    )
 
-    for req in requirements:
-        prompt = (
-            f"Requirement ID: {req['req_id']}\n"
-            f"Requirement Statement: {req['statement']}"
-        )
-        result = await classification_agent.run(prompt)
-        output = result.output
+    result = await classification_agent.run(prompt)
+    outputs = result.output.classifications
 
-        # Guarantee output mapping remains aligned with orchestrator IDs.
-        output.requirement_id = req["req_id"]
-        results.append(output)
+    for i, output in enumerate(outputs):
+        if i < len(requirements):
+            output.requirement_id = requirements[i]["req_id"]
 
-    return results
+    return outputs

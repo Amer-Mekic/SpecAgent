@@ -43,14 +43,15 @@ async def _get_owned_session(
     return session
 
 
-def _extract_revised_statement(content: str) -> str | None:
+def _extract_revised_statements(content: str) -> list[str]:
+    results = []
     for line in content.splitlines():
         match = REVISED_PATTERN.search(line)
         if match:
             revised_statement = match.group(1).strip()
             if revised_statement:
-                return revised_statement
-    return None
+                results.append(revised_statement)
+    return results
 
 
 @router.post("/chat/{session_id}")
@@ -92,6 +93,9 @@ async def chat_with_assistant(
         "When suggesting a revised requirement statement, always format it exactly as:\n"
         "REVISED: <the complete new requirement statement>\n"
         "so the user can apply it with one click."
+        "When suggesting multiple new or revised requirements, use a separate REVISED: line for each one:\n"
+        "REVISED: <first requirement statement>\n"
+        "REVISED: <second requirement statement>\n"
     )
 
     if focused_requirement is not None:
@@ -151,10 +155,10 @@ async def chat_with_assistant(
     db.add(assistant_message)
     await db.commit()
 
-    revised_statement = _extract_revised_statement(assistant_content)
+    revised_statements = _extract_revised_statements(assistant_content)
 
     return {
         "response": assistant_content,
-        "revised_statement": revised_statement,
+        "revised_statements": revised_statements,  # now a list
         "requirement_id": str(payload.requirement_id) if payload.requirement_id is not None else None,
     }

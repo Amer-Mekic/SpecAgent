@@ -12,13 +12,43 @@ export default function ExportBar({ guestMode, sessionId }) {
     const key = `${type}-${format}`;
     setExporting(key);
     try {
-      const blob = await exportApi.srs(sessionId, format);
+      let blob;
+      let filename;
+
+      if (type === 'srs') {
+        blob = await exportApi.srs(sessionId, format);
+        filename = `SpecAgent-SRS.${format}`;
+
+      } else if (type === 'rtm' && format === 'pdf') {
+        blob = await exportApi.rtmPdf(sessionId);
+        filename = 'SpecAgent-RTM.pdf';
+
+      } else if (type === 'rtm' && format === 'csv') {
+        // Fetch RTM data and build CSV client-side
+        const data = await exportApi.rtm(sessionId);
+        const rows = data.rows || [];
+        const header = ['REQ-ID', 'Statement', 'Type', 'Sub-Category', 'Validation', 'Finalization', 'Sources'];
+        const csvRows = rows.map(r => [
+          r.req_id,
+          `"${(r.statement || '').replace(/"/g, '""')}"`,
+          r.type || '',
+          r.sub_category || '',
+          r.validation_result || '',
+          r.finalization_status || '',
+          `"${(r.sources || []).map(s => s.source_identifier).filter(Boolean).join(', ')}"`,
+        ]);
+        const csv = [header, ...csvRows].map(row => row.join(',')).join('\n');
+        blob = new Blob([csv], { type: 'text/csv' });
+        filename = 'SpecAgent-RTM.csv';
+      }
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `SpecAgent-${type.toUpperCase()}.${format}`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
+
     } catch (e) {
       alert(`Export failed: ${e.message}`);
     } finally {

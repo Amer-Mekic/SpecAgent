@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from sqlalchemy import select
@@ -14,6 +15,8 @@ from app.models.requirement import Requirement
 from app.models.session import Session
 from app.models.validation_report import ValidationReport
 from app.services.traceability import run_traceability
+
+logger = logging.getLogger(__name__)
 
 
 async def get_sections(session_id: UUID, db: AsyncSession) -> list[DocumentSection]:
@@ -52,7 +55,9 @@ async def run_pipeline(session_id: UUID, db: AsyncSession) -> None:
             return
 
         await update_session_status(session_id, "extracting", db)
+        logger.info("Starting extraction")
         raw_requirements = await run_extraction(chunks)
+        logger.info(f"Extraction complete: {len(raw_requirements)} requirements found")
 
         saved_requirements: list[tuple[Requirement, dict]] = []
         for req_data in raw_requirements:
@@ -71,12 +76,15 @@ async def run_pipeline(session_id: UUID, db: AsyncSession) -> None:
         for req, _ in saved_requirements:
             await db.refresh(req)
 
-        await update_session_status(session_id, "validating", db)
         req_dicts = [
             {"req_id": req.req_id, "statement": req.statement}
             for req, _ in saved_requirements
         ]
+
+        await update_session_status(session_id, "validating", db)
+        logger.info(f"Starting validation for {len(req_dicts)} requirements")
         validation_results = await run_validation(req_dicts)
+        logger.info(f"Validation complete: {len(validation_results)} results")
 
         for v_result in validation_results:
             req = get_req_by_req_id(v_result.requirement_id, saved_requirements)
@@ -92,7 +100,9 @@ async def run_pipeline(session_id: UUID, db: AsyncSession) -> None:
         await db.commit()
 
         await update_session_status(session_id, "classifying", db)
+        logger.info("Starting classification")
         classification_results = await run_classification(req_dicts)
+        logger.info("Classification complete")
 
         for c_result in classification_results:
             req = get_req_by_req_id(c_result.requirement_id, saved_requirements)
@@ -108,13 +118,18 @@ async def run_pipeline(session_id: UUID, db: AsyncSession) -> None:
         await db.commit()
 
         await update_session_status(session_id, "tracing", db)
+        logger.info("Starting traceability")
         await run_traceability(session_id, db)
+        logger.info("Traceability complete")
 
         for req, _ in saved_requirements:
             req.status = "traced"
         await db.commit()
 
         await update_session_status(session_id, "complete", db)
-    except Exception:
+        logger.info("Pipeline complete")
+
+    except Exception as e:
+        logger.error(f"Pipeline failed: {e}", exc_info=True)
         await update_session_status(session_id, "failed", db)
         raise

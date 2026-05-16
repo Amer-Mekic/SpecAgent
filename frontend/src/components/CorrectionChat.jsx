@@ -30,13 +30,15 @@ export default function CorrectionChat({ guestMode, sessionId, pinnedRequirement
         return;
       }
       const res = await chatApi.send(sessionId, text, pinnedRequirement?.id || null);
-      setMessages(prev => [...prev, { role: 'assistant', content: res.message || res.content || res }]);
-      if (res.suggested_statement && onApplySuggestion) {
-        setMessages(prev => [...prev, {
+      setMessages(prev => [...prev, { role: 'assistant', content: res.response }]);
+      if (res.revised_statements?.length > 0 && onApplySuggestion) {
+        const actionMessages = res.revised_statements.map(statement => ({
           role: 'system-action',
-          content: res.suggested_statement,
-          requirementId: pinnedRequirement?.id,
-        }]);
+          content: statement,
+          requirementId: pinnedRequirement?.id || null,
+          isNew: !pinnedRequirement,
+        }));
+        setMessages(prev => [...prev, ...actionMessages]);
       }
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${e.message}` }]);
@@ -65,11 +67,11 @@ export default function CorrectionChat({ guestMode, sessionId, pinnedRequirement
               <div className="suggestion-bubble">
                 <p className="suggestion-text">{msg.content}</p>
                 <button
-                  className="btn-apply"
-                  onClick={() => onApplySuggestion(msg.requirementId, msg.content)}
-                >
-                  Apply suggestion
-                </button>
+  className="btn-apply"
+  onClick={() => onApplySuggestion(msg.requirementId, msg.content)}
+>
+  {msg.isNew ? 'Add requirement' : 'Apply suggestion'}
+</button>
               </div>
             ) : (
               <div className="msg-bubble">{msg.content}</div>
